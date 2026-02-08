@@ -1,0 +1,1 @@
+print("my name is max i like to play cs2")
