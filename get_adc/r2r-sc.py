@@ -1,0 +1,64 @@
+import time
+import RPi.GPIO as GPIO
+from adc_plot import plot_voltage_vs_time, plot_sampling_period_hist
+
+
+class R2R_ADC:
+    def __init__(self, dynamic_range, compare_time=0.01, verbose=False):
+        self.dynamic_range = dynamic_range
+        self.verbose = verbose
+        self.compare_time = compare_time
+
+        self.bits_gpio = [26, 20, 19, 16, 13, 12, 25, 11]
+        self.comp_gpio = 21
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.bits_gpio, GPIO.OUT, initial=0)
+        GPIO.setup(self.comp_gpio, GPIO.IN)
+
+    def __del__(self):
+        GPIO.output(self.bits_gpio, 0)
+        GPIO.cleanup()
+
+    def number_to_dac(self, number):
+        bits = [int(x) for x in bin(number)[2:].zfill(len(self.bits_gpio))]
+        GPIO.output(self.bits_gpio, bits)
+
+    def sequential_counting_adc(self):
+        max_value = 2 ** len(self.bits_gpio) - 1
+        for value in range(0, max_value + 1):
+            self.number_to_dac(value)
+            time.sleep(self.compare_time)
+            comp_state = GPIO.input(self.comp_gpio)
+            if comp_state == 1:
+                return value
+        return max_value
+
+    def get_sc_voltage(self):
+        code = self.sequential_counting_adc()
+        max_code = 2 ** len(self.bits_gpio) - 1
+        voltage = self.dynamic_range * code / max_code
+        return voltage
+
+
+if __name__ == "__main__":
+    adc = R2R_ADC(dynamic_range=3.3, compare_time=0.0001)
+    
+    voltage_values = []
+    time_values = []
+    duration = 3.0
+    
+    try:
+        start_time = time.time()
+        
+        while time.time() - start_time < duration:
+            voltage = adc.get_sc_voltage()
+            voltage_values.append(voltage)
+            time_values.append(time.time() - start_time)
+            time.sleep(0.01)
+        
+        plot_voltage_vs_time(time_values, voltage_values, adc.dynamic_range)
+        plot_sampling_period_hist(time_values)
+        
+    finally:
+        del adc
